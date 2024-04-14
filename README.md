@@ -1,0 +1,1 @@
+# nvidia-clock-control-tray
