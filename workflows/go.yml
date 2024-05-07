@@ -1,0 +1,21 @@
+name: Go
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.15
+    - name: Build
+      run: go build -ldflags "-H=windowsgui" -v
+    - uses: actions/upload-artifact@v2
+      with:
+        name: a10-4600m-tempmanager
+        path: a10-4600m-tempmanager.exe
