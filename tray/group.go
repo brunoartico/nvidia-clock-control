@@ -3,11 +3,11 @@ package tray
 import "github.com/getlantern/systray"
 
 type MenuGroup struct {
-	items []*systray.MenuItem
+	items []*MenuGroupItem
 }
 
-func (group *MenuGroup) Add(item *systray.MenuItem, behavior func()) {
-	group.items = append(group.items, item)
+func (group *MenuGroup) Add(item *systray.MenuItem, value int, behavior func()) {
+	group.items = append(group.items, &MenuGroupItem{item, value})
 
 	go func() {
 		for {
@@ -19,4 +19,20 @@ func (group *MenuGroup) Add(item *systray.MenuItem, behavior func()) {
 			item.Check()
 		}
 	}()
+}
+
+func (group *MenuGroup) UncheckAll() {
+	for _, groupItem := range group.items {
+		groupItem.Uncheck()
+	}
+}
+
+func (group *MenuGroup) ShowAll() {
+	for _, groupItem := range group.items {
+		groupItem.Show()
+	}
+}
+
+func (group *MenuGroup) GetAll() []*MenuGroupItem {
+	return group.items
 }

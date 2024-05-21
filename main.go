@@ -12,10 +12,10 @@ import (
 
 var currentMemoryLimit = -1
 var currentCoreLimit = -1
+var memoryGroup *tray.MenuGroup
+var coreGroup *tray.MenuGroup
 
-var mLimits *systray.MenuItem
-var mMemoryGroup *systray.MenuItem
-var mCoreGroup *systray.MenuItem
+var gpuClocks = nv_smi.QuerySupportedClocks()
 
 func printLimit(limit int) string {
 	if limit == -1 {
@@ -26,7 +26,7 @@ func printLimit(limit int) string {
 }
 
 func addLimitsInfo() {
-	mLimits = systray.AddMenuItem("Limits not available", "Current Limits")
+	mLimits := systray.AddMenuItem("Limits not available", "Current Limits")
 	mLimits.Disable()
 
 	go func() {
@@ -36,45 +36,87 @@ func addLimitsInfo() {
 		}
 	}()
 }
-	
-var gpuClocks = nv_smi.QuerySupportedClocks()
 
 func addMemControl() {
-	mMemoryGroup = systray.AddMenuItem("Memory Clock Limit", "Memory Clock Limit")
+	menuItemMemoryGroup := systray.AddMenuItem("Memory Clock Limit", "Memory Clock Limit")
 
-	group := new(tray.MenuGroup)
+	memoryGroup = new(tray.MenuGroup)
 
 	for _, value := range gpuClocks.Memory() {
 		var memoryClock = printLimit(value)
-		group.Add(mMemoryGroup.AddSubMenuItemCheckbox(memoryClock, memoryClock, false), func() {
+		memoryGroup.Add(menuItemMemoryGroup.AddSubMenuItemCheckbox(memoryClock, memoryClock, false), value, func() {
 			currentMemoryLimit = value
 			nv_smi.SetMemoryLimit(gpuClocks.MinimumMemoryClock, currentMemoryLimit)
 		})
 	}
-
-	group.Add(mMemoryGroup.AddSubMenuItemCheckbox("Unlimited", "Unlimited", true), func() {
-		currentMemoryLimit = -1
-		nv_smi.SetMemoryLimit(0, currentMemoryLimit)
-	})
 }
 
 func addCoreControl() {
-	mCoreGroup = systray.AddMenuItem("Core Clock Limit", "Core Clock Limit")
+	menuItemCoreGroup := systray.AddMenuItem("Core Clock Limit", "Core Clock Limit")
 
-	group := new(tray.MenuGroup)
+	coreGroup = new(tray.MenuGroup)
 	
-	for _, value := range gpuClocks.Core() {
+	coreClocks := gpuClocks.Core()
+
+	for _, value := range coreClocks {
 		var coreClock = printLimit(value)
-		group.Add(mCoreGroup.AddSubMenuItemCheckbox(coreClock, coreClock, false), func() {
+		coreGroup.Add(menuItemCoreGroup.AddSubMenuItemCheckbox(coreClock, coreClock, false), value, func() {
 			currentCoreLimit = value
 			nv_smi.SetCoreLimit(gpuClocks.MinimumCoreClock, currentCoreLimit)
 		})
 	}
+}
+
+func addResetControls() {
+	resetAll := systray.AddMenuItem("Reset All Limits", "Reset All Limits")
+	go func() {
+		for {
+			<- resetAll.ClickedCh
+			currentMemoryLimit = -1
+			currentCoreLimit = -1
+			nv_smi.ResetAllLimits()
+			memoryGroup.UncheckAll()
+			coreGroup.UncheckAll()
+		}
+	}()
+}
+
+func hideSomeCoreLimits(coreStepping int) {
+	allItems := coreGroup.GetAll()
+	prev := allItems[0].GetValue()
+	for _, groupItem := range allItems {
+		groupItem.Show()
+		value := groupItem.GetValue()
+		if prev - value < coreStepping  {
+			groupItem.Hide()
+		} else {
+			prev = value
+		}
+	}
+}
+
+func addSettingsControl() {
+	settingsMenu := systray.AddMenuItem("Settings", "Settings")
+
+	hideCoreLimitSubItem := settingsMenu.AddSubMenuItem("Hide Core Limits", "Hide Core Limits")
+
+	hideCoreLimitsMenuGroup := new(tray.MenuGroup)
 	
-	group.Add(mCoreGroup.AddSubMenuItemCheckbox("Unlimited", "Unlimited", true), func() {
-		currentCoreLimit = -1
-		nv_smi.SetCoreLimit(0, currentCoreLimit)
-	})
+	for _, value := range [6]int{250, 200, 150, 100, 50, 30} {
+		displayValue := fmt.Sprintf("%d MHz Steps", value)
+		hideCoreLimitsMenuGroup.Add(hideCoreLimitSubItem.AddSubMenuItemCheckbox(displayValue, displayValue, false), value, func() {
+			hideSomeCoreLimits(value)
+		})
+	}
+	
+	showAllCoreLimits := settingsMenu.AddSubMenuItem("Show All Core Limits", "Show All Core Limits")
+	go func() {
+		for {
+			<-showAllCoreLimits.ClickedCh
+			hideCoreLimitsMenuGroup.UncheckAll()
+			coreGroup.ShowAll()
+		}
+	}()
 }
 
 func onReady() {
@@ -89,6 +131,16 @@ func onReady() {
 
 	addMemControl()
 	addCoreControl()
+
+	systray.AddSeparator()
+
+	addResetControls()
+
+	systray.AddSeparator()
+	
+	addSettingsControl()
+
+	systray.AddSeparator()
 
 	mQuit := systray.AddMenuItem("Quit", "Quit")
 	go func() {
